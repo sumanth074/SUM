@@ -1,48 +1,51 @@
 import os
 import streamlit as st
-from dotenv import load_dotenv
-from langchain.llms import OpenAI
-from langchain.chains import RetrievalQA
-from langchain.document_loaders import PyPDFLoader
+from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS
-from langchain.embeddings import OpenAIEmbeddings
+from langchain.document_loaders import PyPDFLoader
+from langchain.chains import RetrievalQA
+from langchain.llms import HuggingFaceHub  # Optional LLM (you can skip QA if no model)
+from dotenv import load_dotenv
 
-# ✅ Load .env or set directly
-# Option 1: load from .env
+# Load environment variables (for Hugging Face token if needed)
 load_dotenv()
-api_key = os.getenv("OPENAI_API_KEY")
 
-# Option 2: (for testing only) — hardcode
-# api_key = "sk-proj-..."  # Replace with your key only in local dev
+# ✅ Optional: Hugging Face Hub token (for inference if using HuggingFaceHub LLM)
+hf_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 
-# ✅ Safe check
-if not api_key:
-    st.error("OpenAI API key not found. Please check your .env file.")
-    st.stop()
-
-# ✅ Initialize embeddings
-embeddings = OpenAIEmbeddings(openai_api_key=api_key)
-
+# ✅ Set Streamlit page config
 st.set_page_config(page_title="AI STEM Tutor", layout="centered")
-st.title(" AI Tutor for STEM Subjects")
+st.title(" AI Tutor for STEM Subjects")
 st.markdown("Powered by Agentic AI, RAG, and Granite Principles")
 
 # ✅ Upload PDF
 uploaded_file = st.file_uploader("Upload a STEM textbook or PDF", type="pdf")
+
 if uploaded_file:
     with open("chapter.pdf", "wb") as f:
         f.write(uploaded_file.read())
 
-    # ✅ Load and embed
+    # ✅ Load PDF
     loader = PyPDFLoader("chapter.pdf")
     docs = loader.load()
 
+    # ✅ Use HuggingFace Embeddings (free + local)
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+    # ✅ Embed into FAISS DB
     db = FAISS.from_documents(docs, embeddings)
     retriever = db.as_retriever()
 
-    # ✅ QA chain with RAG
+    # ✅ Optional: LLM using HuggingFaceHub (or comment this out)
+    llm = HuggingFaceHub(
+        repo_id="google/flan-t5-base",  # lightweight model good for Q&A
+        model_kwargs={"temperature": 0.1, "max_new_tokens": 256},
+        huggingfacehub_api_token=hf_token,
+    )
+
+    # ✅ Build Retrieval QA Chain
     qa_chain = RetrievalQA.from_chain_type(
-        llm=OpenAI(temperature=0, openai_api_key=api_key),
+        llm=llm,
         chain_type="stuff",
         retriever=retriever
     )
@@ -59,3 +62,5 @@ if uploaded_file:
         response = qa_chain.run(ethical_prompt)
         st.write("### Answer:")
         st.success(response)
+
+
